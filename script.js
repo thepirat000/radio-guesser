@@ -2,10 +2,11 @@ const RADIO_API_BASE = "https://de1.api.radio-browser.info/json";
 const TV_API_BASE = "https://iptv-org.github.io/api";
 const HISTORY_STORAGE_KEY = "guessStationHistory";
 const SETTINGS_STORAGE_KEY = "guessStationSettings";
-const TV_CACHE_DB_NAME = "station-guesser-cache";
-const TV_CACHE_STORE_NAME = "datasets";
+const CACHE_DB_NAME = "station-guesser-cache";
+const CACHE_STORE_NAME = "datasets";
 const TV_CACHE_KEY = "tv-stations";
-const TV_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const RADIO_CACHE_KEY = "radio-stations";
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 20;
 const STREAM_START_TIMEOUT_SECONDS = 10;
 const COUNTRY_INFO_PATH = "country-info.json";
@@ -38,6 +39,9 @@ const translations = {
     levelBeginner: "Beginner - 4 options, pick from list",
     levelIntermediate: "Intermediate - 8 options, hidden station",
     levelAdvanced: "Advanced - Blind guess",
+    levelBeginnerShort: "Beginner",
+    levelIntermediateShort: "Intermediate",
+    levelAdvancedShort: "Advanced",
     timerOptionNone: "No time limit",
     timerOption30s: "30 seconds",
     timerOption1m: "1 minute",
@@ -72,10 +76,6 @@ const translations = {
     listenAndGuess: "Listen and guess the country.",
     stationNameLabel: "Station",
     debugAnswerLabel: "Debug answer",
-    waitingForStream: "Waiting for stream...",
-    autoplayBlocked: "Press play if autoplay is blocked. Timer starts once the stream is playing.",
-    streamTimeout:
-      "This station did not start within 10 seconds. It was automatically skipped.",
     timerLeft: "Time left: {time}",
     invalidGuess: "Please select a country from the suggestions.",
     rightTitle: "RIGHT!",
@@ -134,6 +134,9 @@ const translations = {
     levelBeginner: "Principiante - 4 opciones para elegir",
     levelIntermediate: "Intermedio - 8 opciones, emisora oculta",
     levelAdvanced: "Avanzado - A ciegas",
+    levelBeginnerShort: "Principiante",
+    levelIntermediateShort: "Intermedio",
+    levelAdvancedShort: "Avanzado",
     timerOptionNone: "Sin límite",
     timerOption30s: "30 segundos",
     timerOption1m: "1 minuto",
@@ -168,10 +171,6 @@ const translations = {
     listenAndGuess: "Escucha y adivina el país.",
     stationNameLabel: "Emisora",
     debugAnswerLabel: "Respuesta debug",
-    waitingForStream: "Esperando audio...",
-    autoplayBlocked: "Presiona play si el autoplay está bloqueado. El timer inicia cuando comience el audio.",
-    streamTimeout:
-      "Esta emisora no inició en 10 segundos. Fue saltada automáticamente.",
     timerLeft: "Tiempo restante: {time}",
     invalidGuess: "Selecciona un país desde las sugerencias.",
     rightTitle: "¡CORRECTO!",
@@ -512,24 +511,44 @@ async function startGame() {
 }
 
 async function loadStations() {
-  if (gameState.gameType === "tv") {
-    const tvStations = await loadTvStations();
-    gameState.allStations = tvStations;
-    gameState.countryCodes = uniqueCountryCodes(tvStations);
-    rebuildCountryOptions();
-    return;
+  const stations = gameState.gameType === "tv" ? await loadTvStations() : await loadRadioStations();
+  gameState.allStations = stations;
+  gameState.countryCodes = uniqueCountryCodes(stations);
+  rebuildCountryOptions();
+}
+
+async function loadRadioStations() {
+  const cached = await readStationsCache(RADIO_CACHE_KEY);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_MAX_AGE_MS) {
+    return cached.stations;
   }
 
   const endpoint = `${RADIO_API_BASE}/stations/search?hidebroken=true&order=random&limit=10000`;
-  const response = await $.getJSON(endpoint);
+  let response;
+  try {
+    response = await $.getJSON(endpoint);
+  } catch (error) {
+    if (cached) {
+      console.warn("Unable to refresh radio station data; using the expired cache.", error);
+      return cached.stations;
+    }
+    throw error;
+  }
 
   const validStations = dedupeStations(
     response.map(normalizeStation).filter((station) => station && station.lastcheckok === 1),
   );
 
-  gameState.allStations = validStations;
-  gameState.countryCodes = uniqueCountryCodes(validStations);
-  rebuildCountryOptions();
+  if (!validStations.length) {
+    if (cached) {
+      console.warn("No valid radio stations returned; using the expired cache.");
+      return cached.stations;
+    }
+    throw new Error("No valid radio stations were returned.");
+  }
+
+  await writeStationsCache(RADIO_CACHE_KEY, validStations);
+  return validStations;
 }
 
 function normalizeStation(station) {
@@ -554,8 +573,8 @@ function normalizeStation(station) {
 }
 
 async function loadTvStations() {
-  const cached = await readTvStationsCache();
-  if (cached && Date.now() - cached.fetchedAt < TV_CACHE_MAX_AGE_MS) {
+  const cached = await readStationsCache(TV_CACHE_KEY);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_MAX_AGE_MS) {
     return cached.stations;
   }
 
@@ -624,42 +643,42 @@ async function loadTvStations() {
     throw new Error("No TV channels with a valid country and stream were returned.");
   }
 
-  await writeTvStationsCache(stations);
+  await writeStationsCache(TV_CACHE_KEY, stations);
   return stations;
 }
 
-function openTvCacheDatabase() {
+function openCacheDatabase() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
       reject(new Error("IndexedDB is unavailable."));
       return;
     }
-    const request = window.indexedDB.open(TV_CACHE_DB_NAME, 1);
+    const request = window.indexedDB.open(CACHE_DB_NAME, 1);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(TV_CACHE_STORE_NAME)) {
-        request.result.createObjectStore(TV_CACHE_STORE_NAME);
+      if (!request.result.objectStoreNames.contains(CACHE_STORE_NAME)) {
+        request.result.createObjectStore(CACHE_STORE_NAME);
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("Unable to open the TV cache."));
+    request.onerror = () => reject(request.error || new Error("Unable to open the station cache."));
   });
 }
 
-async function readTvStationsCache() {
+async function readStationsCache(cacheKey) {
   let database;
   try {
-    database = await openTvCacheDatabase();
+    database = await openCacheDatabase();
     const record = await new Promise((resolve, reject) => {
       const request = database
-        .transaction(TV_CACHE_STORE_NAME, "readonly")
-        .objectStore(TV_CACHE_STORE_NAME)
-        .get(TV_CACHE_KEY);
+        .transaction(CACHE_STORE_NAME, "readonly")
+        .objectStore(CACHE_STORE_NAME)
+        .get(cacheKey);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error || new Error("Unable to read the TV cache."));
+      request.onerror = () => reject(request.error || new Error("Unable to read the station cache."));
     });
     return record && Array.isArray(record.stations) && Number.isFinite(record.fetchedAt) ? record : null;
   } catch (error) {
-    console.warn("Unable to read the TV station cache; fetching fresh data.", error);
+    console.warn("Unable to read the station cache; fetching fresh data.", error);
     return null;
   } finally {
     if (database) {
@@ -668,20 +687,20 @@ async function readTvStationsCache() {
   }
 }
 
-async function writeTvStationsCache(stations) {
+async function writeStationsCache(cacheKey, stations) {
   let database;
   try {
-    database = await openTvCacheDatabase();
+    database = await openCacheDatabase();
     await new Promise((resolve, reject) => {
       const request = database
-        .transaction(TV_CACHE_STORE_NAME, "readwrite")
-        .objectStore(TV_CACHE_STORE_NAME)
-        .put({ fetchedAt: Date.now(), stations }, TV_CACHE_KEY);
+        .transaction(CACHE_STORE_NAME, "readwrite")
+        .objectStore(CACHE_STORE_NAME)
+        .put({ fetchedAt: Date.now(), stations }, cacheKey);
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error || new Error("Unable to write the TV cache."));
+      request.onerror = () => reject(request.error || new Error("Unable to write the station cache."));
     });
   } catch (error) {
-    console.warn("Unable to cache TV channel data in IndexedDB.", error);
+    console.warn("Unable to cache station data in IndexedDB.", error);
   } finally {
     if (database) {
       database.close();
@@ -717,7 +736,7 @@ function startRound() {
   prepareBeginnerChoices(station);
   setBeginnerOptionsEnabled(false);
   renderCurrentPoints();
-  $("#stream-status").text(t("waitingForStream"));
+  $("#stream-status").text("");
   $("#submit-guess-btn").prop("disabled", true);
   $("#timer-display").addClass("hidden").text("");
 
@@ -766,7 +785,6 @@ function startStationPlayback(station) {
     if (gameState.roundLocked || gameState.streamStarted) {
       return;
     }
-    $("#stream-status").text(t("streamTimeout"));
     submitGuess("skipped");
   }, STREAM_START_TIMEOUT_SECONDS * 1000);
 
@@ -790,8 +808,10 @@ function startStationPlayback(station) {
 }
 
 function playStationMedia(player) {
-  player.play().catch(() => {
-    $("#stream-status").text(t("autoplayBlocked"));
+  player.play().catch((error) => {
+    if (error.name !== "NotAllowedError" && error.name !== "AbortError") {
+      console.warn("Unable to start station playback.", error);
+    }
   });
 }
 
@@ -799,7 +819,6 @@ function handleStreamFailure() {
   if (gameState.roundLocked || gameState.streamStarted) {
     return;
   }
-  $("#stream-status").text(t("streamTimeout"));
   submitGuess("skipped");
 }
 
@@ -974,7 +993,7 @@ function showFeedback(result) {
 
   $("#feedback-round-display").text(`${t("roundTitle")} ${result.roundNumber} / ${gameState.selectedStations.length}`);
   $("#feedback-title").text(title);
-  $("#feedback-station-name").text(`${t("stationNameLabel")}: ${result.stationName}`);
+  $("#feedback-station-name").text(`${t("stationNameLabel")}: ${truncateStationName(result.stationName)}`);
   $("#feedback-message").text(`${message} ${pointsText} | ${t("distanceLabel")}: ${distanceText}`);
   $("#feedback-country-detail").html(countriesHtml);
   $("#next-round-btn").text(
@@ -992,7 +1011,6 @@ function handleSkippedRound() {
     return;
   }
 
-  $("#stream-status").text(t("streamTimeout"));
   gameState.selectedStations[gameState.currentRoundIndex] = replacementStation;
   window.setTimeout(() => {
     if (gameState.roundLocked) {
@@ -1052,7 +1070,7 @@ function renderSummaryScore() {
   const totalPoints = getAccumulatedPoints();
   const maxPossiblePoints = totalRounds * SCORE_RULES.exactMatchPoints;
 
-  const levelText = getLevelOptionLabel(gameState.selectedLevel);
+  const levelText = getLevelName(gameState.selectedLevel);
   const timerText = getTimerOptionLabel(gameState.roundTimerSeconds || 0);
 
   $("#summary-meta").html(`
@@ -1107,6 +1125,21 @@ function getLevelOptionLabel(levelKey) {
     return t("levelIntermediate");
   }
   return t("levelBeginner");
+}
+
+function getLevelName(levelKey) {
+  if (levelKey === "advanced") {
+    return t("levelAdvancedShort");
+  }
+  if (levelKey === "intermediate") {
+    return t("levelIntermediateShort");
+  }
+  return t("levelBeginnerShort");
+}
+
+function truncateStationName(name) {
+  const characters = Array.from(String(name || ""));
+  return characters.length > 120 ? `${characters.slice(0, 120).join("")}...` : characters.join("");
 }
 
 function getTimerOptionLabel(secondsValue) {
@@ -1243,7 +1276,7 @@ function renderResultsTable() {
     const rowHtml = `
       <tr>
         <td>${escapeHtml(String(result.roundNumber))}</td>
-        <td>${escapeHtml(result.stationName)}</td>
+        <td>${escapeHtml(truncateStationName(result.stationName))}</td>
         <td>${formatCountryWithFlag(result.guessCountryCode, guessCountryName, "-")}</td>
         <td>${formatCountryWithFlag(result.correctCountryCode, correctCountryName, t("unknownCountry"))}</td>
         <td class="${statusInfo.className}">${statusInfo.label} (+${escapeHtml(String(result.points || 0))})</td>
@@ -1412,7 +1445,7 @@ function renderHistory() {
     const timerLabel = game.timerSeconds
       ? formatText("timerPerRound", { seconds: game.timerSeconds })
       : t("timerNone");
-    const levelLabel = getLevelOptionLabel(game.level || "intermediate");
+    const levelLabel = getLevelName(game.level || "intermediate");
     const totalPoints = Number.isFinite(Number(game.totalPoints))
       ? Number(game.totalPoints)
       : Array.isArray(game.details)
@@ -1438,7 +1471,7 @@ function renderHistory() {
             return `
               <li>
                 #${escapeHtml(String(detail.roundNumber))} -
-                ${escapeHtml(detail.stationName)} -
+                ${escapeHtml(truncateStationName(detail.stationName))} -
                 ${escapeHtml(t("yourGuessLabel"))}: ${escapeHtml(guessCountryName)} -
                 ${escapeHtml(t("correctCountryLabel"))}: ${escapeHtml(correctCountryName)} -
                 ${detailStatus.label} -
@@ -1504,15 +1537,16 @@ function renderCurrentStationTitle() {
   }
 
   const icon = $("#station-icon");
-  icon.off("error.stationIcon");
+  icon
+    .off("error.stationIcon")
+    .on("error.stationIcon", function () {
+      $(this).addClass("hidden");
+    });
   if (station.iconUrl) {
     icon
       .attr("src", station.iconUrl)
-      .attr("alt", `logo`)
-      .removeClass("hidden")
-      .on("error.stationIcon", function () {
-        $(this).addClass("hidden");
-      });
+      .attr("alt", `${truncateStationName(station.name)} logo`)
+      .removeClass("hidden");
   } else {
     icon.addClass("hidden").removeAttr("src");
   }
@@ -1522,7 +1556,7 @@ function renderCurrentStationTitle() {
     return;
   }
 
-  $("#station-title").text(`${t("stationNameLabel")}: ${station.name}`);
+  $("#station-title").text(truncateStationName(station.name));
 }
 
 function renderDebugAnswer(station) {

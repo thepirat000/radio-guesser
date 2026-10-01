@@ -285,15 +285,20 @@ input {
   display: block;
   width: 72px;
   height: 72px;
-  margin: 10px 0;
+  margin: 10px auto;
   object-fit: contain;
   border-radius: 8px;
   background: var(--history-bg);
 }
 
+.station-icon.hidden {
+  display: none;
+}
+
 #station-title {
-  margin: 10px 0 4px;
+  margin: 10px auto 4px;
   font-weight: 700;
+  text-align: center;
 }
 
 .guess-area {

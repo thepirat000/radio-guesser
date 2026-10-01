@@ -7,7 +7,7 @@ Simple static game (HTML + CSS + JavaScript with jQuery) to guess the country of
 - No backend, no Node server, no React.
 - Choose Radio or TV as the game type.
 - Uses [Radio Browser API](https://api.radio-browser.info/) for radio stations and the [iptv-org APIs](https://github.com/iptv-org/api) for TV channels.
-- Caches the assembled TV channel list in IndexedDB for 24 hours.
+- Caches the assembled radio station list and TV channel list in IndexedDB for 24 hours, to avoid refetching on every game.
 - Only uses stations with `lastcheckok = 1`.
 - Plays random stations and asks user to guess country.
 - Supports **English** and **Spanish (LatAm)**.
