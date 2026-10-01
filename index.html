@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Radio Guesser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div class="app-title-group">
+          <h1 id="app-title">Radio Guesser</h1>
+          <p id="app-subtitle">Listen to a random radio station and guess the country.</p>
+        </div>
+        <div class="lang-control">
+          <div class="control-row">
+            <label for="language-select" id="language-label">Language</label>
+            <select id="language-select">
+              <option value="en">English</option>
+              <option value="es">Español (LatAm)</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label for="theme-select" id="theme-label">Theme</label>
+            <select id="theme-select">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      <section id="setup-panel" class="panel">
+        <h2 id="setup-title">Game Setup</h2>
+        <p id="setup-compact-summary" class="muted"></p>
+        <button id="toggle-setup-btn" class="secondary-btn" type="button">Show Options</button>
+        <div id="setup-options" class="hidden">
+          <div class="field-row">
+            <label for="round-count" id="round-count-label">Stations to guess</label>
+            <input id="round-count" type="number" min="1" max="50" value="5" />
+          </div>
+          <div class="field-row">
+            <label for="round-timer-select" id="round-timer-label">Time limit per station</label>
+            <select id="round-timer-select">
+              <option value="0">No time limit</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="120">2 minutes</option>
+              <option value="300">5 minutes</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label for="level-select" id="level-label">Level</label>
+            <select id="level-select">
+              <option value="beginner">Beginner - Pick from list</option>
+              <option value="intermediate" selected>Intermediate - More options</option>
+              <option value="advanced">Advanced - Blind guess</option>
+            </select>
+          </div>
+        </div>
+        <button id="start-game-btn" class="primary-btn">Start Game</button>
+        <div id="setup-spinner" class="spinner hidden" aria-hidden="true"></div>
+        <p id="setup-status" class="muted"></p>
+      </section>
+
+      <section id="game-panel" class="panel hidden">
+        <div class="game-top">
+          <h2 id="round-title">Round <span id="round-display">1</span></h2>
+          <div class="game-metrics">
+            <span id="points-display" class="points-display"></span>
+            <span id="timer-display" class="timer hidden"></span>
+          </div>
+        </div>
+        <div class="round-progress-wrap">
+          <div class="round-progress-bar">
+            <div id="round-progress-fill" class="round-progress-fill"></div>
+          </div>
+          <p id="round-progress-text" class="muted"></p>
+        </div>
+
+        <div class="audio-area">
+          <audio id="radio-player" controls autoplay></audio>
+          <p id="station-title"></p>
+          <p id="debug-answer" class="debug-answer hidden"></p>
+          <div id="stream-spinner" class="spinner hidden" aria-hidden="true"></div>
+          <p id="stream-status" class="muted"></p>
+        </div>
+
+        <div class="guess-area">
+          <div id="advanced-guess-container">
+            <label for="country-guess-input" id="country-guess-label">Type your country guess</label>
+            <input
+              id="country-guess-input"
+              type="text"
+              autocomplete="off"
+              placeholder="Start typing a country..."
+            />
+            <div id="country-suggestions" class="suggestions hidden" role="listbox"></div>
+            <button id="submit-guess-btn" class="primary-btn">Submit Guess</button>
+          </div>
+          <div id="beginner-guess-container" class="hidden">
+            <p id="beginner-guess-label"></p>
+            <div id="beginner-options" class="beginner-options"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="feedback-panel" class="panel hidden">
+        <p id="feedback-round-display" class="muted"></p>
+        <h2 id="feedback-title"></h2>
+        <p id="feedback-station-name" class="feedback-station"></p>
+        <p id="feedback-message"></p>
+        <div id="feedback-country-detail"></div>
+        <button id="next-round-btn" class="primary-btn">Next Station</button>
+      </section>
+
+      <section id="summary-panel" class="panel hidden">
+        <h2 id="summary-title">Game Results</h2>
+        <p id="summary-score" class="summary-score"></p>
+        <div class="results-table-wrap">
+          <table id="results-table">
+            <thead>
+              <tr>
+                <th id="col-round">#</th>
+                <th id="col-station">Station</th>
+                <th id="col-guess">Your Guess</th>
+                <th id="col-correct">Correct Country</th>
+                <th id="col-status">Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="play-again-btn" class="primary-btn">Play Again</button>
+      </section>
+
+      <section id="history-panel" class="panel">
+        <div class="history-header">
+          <h2 id="history-title">Previous Games</h2>
+          <button id="reset-history-btn" class="danger-btn" type="button">Reset</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+      </section>
+
+      <footer class="app-footer">
+        <span class="footer-credit">by <strong class="footer-author">ThePirat</strong> — 2026</span>
+      </footer>
+    </main>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
