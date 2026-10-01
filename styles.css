@@ -272,8 +272,23 @@ input {
   margin: 12px 0 16px;
 }
 
-#radio-player {
+.station-player {
   width: 100%;
+}
+
+.station-player#tv-player {
+  max-height: 480px;
+  background: #000;
+}
+
+.station-icon {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 10px 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--history-bg);
 }
 
 #station-title {

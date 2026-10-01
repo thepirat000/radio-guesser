@@ -3,17 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Radio Guesser</title>
+    <title>Station Guesser</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app">
       <header class="app-header">
         <div class="app-title-group">
-          <h1 id="app-title">Radio Guesser</h1>
-          <p id="app-subtitle">Listen to a random radio station and guess the country.</p>
+          <h1 id="app-title">Station Guesser</h1>
+          <p id="app-subtitle">Listen to a random station and guess the country.</p>
         </div>
         <div class="lang-control">
+          <div class="control-row">
+            <label for="game-type-select" id="game-type-label">Game Type</label>
+            <select id="game-type-select">
+              <option value="radio">Radio</option>
+              <option value="tv">TV</option>
+            </select>
+          </div>
           <div class="control-row">
             <label for="language-select" id="language-label">Language</label>
             <select id="language-select">
@@ -81,10 +88,11 @@
         </div>
 
         <div class="audio-area">
-          <audio id="radio-player" controls autoplay></audio>
+          <audio id="radio-player" class="station-player" controls autoplay></audio>
+          <video id="tv-player" class="station-player hidden" controls autoplay playsinline></video>
+          <img id="station-icon" class="station-icon hidden" alt="" />
           <p id="station-title"></p>
           <p id="debug-answer" class="debug-answer hidden"></p>
-          <div id="stream-spinner" class="spinner hidden" aria-hidden="true"></div>
           <p id="stream-status" class="muted"></p>
         </div>
 
@@ -151,6 +159,7 @@
     </main>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

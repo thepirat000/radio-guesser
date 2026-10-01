@@ -1,6 +1,11 @@
 const RADIO_API_BASE = "https://de1.api.radio-browser.info/json";
+const TV_API_BASE = "https://iptv-org.github.io/api";
 const HISTORY_STORAGE_KEY = "guessStationHistory";
 const SETTINGS_STORAGE_KEY = "guessStationSettings";
+const TV_CACHE_DB_NAME = "station-guesser-cache";
+const TV_CACHE_STORE_NAME = "datasets";
+const TV_CACHE_KEY = "tv-stations";
+const TV_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_HISTORY_ITEMS = 20;
 const STREAM_START_TIMEOUT_SECONDS = 10;
 const COUNTRY_INFO_PATH = "country-info.json";
@@ -16,8 +21,11 @@ const SCORE_RULES = {
 
 const translations = {
   en: {
-    appTitle: "Radio Guesser",
-    appSubtitle: "Listen to a random radio station and guess the country.",
+    appTitle: "Station Guesser",
+    appSubtitle: "Listen to a random station and guess the country.",
+    gameType: "Game Type",
+    gameTypeRadio: "Radio",
+    gameTypeTv: "TV",
     language: "Language",
     theme: "Theme",
     themeSystem: "System",
@@ -28,7 +36,7 @@ const translations = {
     maxSecondsPerStation: "Time limit per station",
     levelLabel: "Level",
     levelBeginner: "Beginner - 4 options, pick from list",
-    levelIntermediate: "Intermediate - 6 options, hidden station",
+    levelIntermediate: "Intermediate - 8 options, hidden station",
     levelAdvanced: "Advanced - Blind guess",
     timerOptionNone: "No time limit",
     timerOption30s: "30 seconds",
@@ -38,7 +46,7 @@ const translations = {
     toggleSetupShow: "Show Options",
     toggleSetupHide: "Hide Options",
     beginnerGuessLabel: "Pick the correct country",
-    setupSummary: "{level} - {timer}",
+    setupSummary: "{gameType} - {level} - {timer}",
     noLimitPlaceholder: "No limit",
     startGame: "Start Game",
     roundTitle: "Round",
@@ -106,11 +114,14 @@ const translations = {
     distanceFar: "far",
     distanceVeryFar: "very far",
     distanceExact: "exact country",
-    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
+    historyCompactLine: "{date} | {gameType} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
   },
   es: {
-    appTitle: "Radio Guesser",
-    appSubtitle: "Escucha una radio aleatoria y adivina el país.",
+    appTitle: "Station Guesser",
+    appSubtitle: "Escucha una emisora aleatoria y adivina el país.",
+    gameType: "Tipo de juego",
+    gameTypeRadio: "Radio",
+    gameTypeTv: "TV",
     language: "Idioma",
     theme: "Tema",
     themeSystem: "Sistema",
@@ -121,7 +132,7 @@ const translations = {
     maxSecondsPerStation: "Límite de tiempo por emisora",
     levelLabel: "Nivel",
     levelBeginner: "Principiante - 4 opciones para elegir",
-    levelIntermediate: "Intermedio - 6 opciones, emisora oculta",
+    levelIntermediate: "Intermedio - 8 opciones, emisora oculta",
     levelAdvanced: "Avanzado - A ciegas",
     timerOptionNone: "Sin límite",
     timerOption30s: "30 segundos",
@@ -131,7 +142,7 @@ const translations = {
     toggleSetupShow: "Mostrar opciones",
     toggleSetupHide: "Ocultar opciones",
     beginnerGuessLabel: "Elige el país correcto",
-    setupSummary: "{level} - {timer}",
+    setupSummary: "{gameType} - {level} - {timer}",
     noLimitPlaceholder: "Sin límite",
     startGame: "Iniciar juego",
     roundTitle: "Ronda",
@@ -199,11 +210,12 @@ const translations = {
     distanceFar: "lejos",
     distanceVeryFar: "muy lejos",
     distanceExact: "país exacto",
-    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
+    historyCompactLine: "{date} | {gameType} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
   },
 };
 
 const gameState = {
+  gameType: "radio",
   allStations: [],
   countryCodes: [],
   countryOptions: [],
@@ -225,6 +237,7 @@ const gameState = {
   beginnerChoices: [],
   currentSuggestions: [],
   selectedSuggestionIndex: 0,
+  hlsInstance: null,
 };
 
 const displayNamesCache = {};
@@ -246,6 +259,7 @@ function initializeSettings() {
   const defaults = {
     language: browserLang.startsWith("es") ? "es" : "en",
     level: "intermediate",
+    gameType: "radio",
     theme: "system",
     roundCount: 5,
     roundTimer: 60,
@@ -254,8 +268,10 @@ function initializeSettings() {
   gameState.debugMode = queryParams.get("d") === "1";
 
   gameState.currentLanguage = settings.language;
+  gameState.gameType = settings.gameType;
   gameState.selectedLevel = settings.level;
   gameState.themePreference = settings.theme;
+  $("#game-type-select").val(settings.gameType);
   $("#language-select").val(settings.language);
   $("#level-select").val(settings.level);
   $("#theme-select").val(settings.theme);
@@ -275,6 +291,7 @@ function bindEvents() {
   $("#reset-history-btn").on("click", resetHistory);
   $("#toggle-setup-btn").on("click", toggleSetupOptions);
   $("#language-select").on("change", onLanguageChanged);
+  $("#game-type-select").on("change", onGameTypeChanged);
   $("#level-select").on("change", onLevelChanged);
   $("#theme-select").on("change", onThemeChanged);
   $("#round-count, #round-timer-select").on("change", () => {
@@ -298,6 +315,12 @@ function bindEvents() {
       hideSuggestions();
     }
   });
+}
+
+function onGameTypeChanged() {
+  gameState.gameType = $("#game-type-select").val() === "tv" ? "tv" : "radio";
+  persistCurrentSettings();
+  updateSetupSummary();
 }
 
 function onLanguageChanged() {
@@ -393,6 +416,9 @@ function applyLanguage() {
 
   $("#app-title").text(t("appTitle"));
   $("#app-subtitle").text(t("appSubtitle"));
+  $("#game-type-label").text(t("gameType"));
+  $("#game-type-select option[value='radio']").text(t("gameTypeRadio"));
+  $("#game-type-select option[value='tv']").text(t("gameTypeTv"));
   $("#language-label").text(t("language"));
   $("#theme-label").text(t("theme"));
   $("#theme-select option[value='system']").text(t("themeSystem"));
@@ -440,11 +466,13 @@ async function startGame() {
   const selectedLevel = ["beginner", "intermediate", "advanced"].includes(selectedLevelRaw)
     ? selectedLevelRaw
     : "beginner";
+  gameState.gameType = $("#game-type-select").val() === "tv" ? "tv" : "radio";
   persistCurrentSettings();
 
   setSetupStatus(t("loadingStations"));
   setSetupLoading(true);
   $("#start-game-btn").prop("disabled", true);
+  $("#game-type-select").prop("disabled", true);
 
   try {
     await loadCountryInfoData();
@@ -453,6 +481,7 @@ async function startGame() {
     setSetupStatus(`${t("loadStationsError")}: ${error.message}`);
     setSetupLoading(false);
     $("#start-game-btn").prop("disabled", false);
+    $("#game-type-select").prop("disabled", false);
     return;
   }
 
@@ -460,6 +489,7 @@ async function startGame() {
     setSetupStatus(t("noStationsAvailable"));
     setSetupLoading(false);
     $("#start-game-btn").prop("disabled", false);
+    $("#game-type-select").prop("disabled", false);
     return;
   }
 
@@ -482,6 +512,14 @@ async function startGame() {
 }
 
 async function loadStations() {
+  if (gameState.gameType === "tv") {
+    const tvStations = await loadTvStations();
+    gameState.allStations = tvStations;
+    gameState.countryCodes = uniqueCountryCodes(tvStations);
+    rebuildCountryOptions();
+    return;
+  }
+
   const endpoint = `${RADIO_API_BASE}/stations/search?hidebroken=true&order=random&limit=10000`;
   const response = await $.getJSON(endpoint);
 
@@ -509,8 +547,146 @@ function normalizeStation(station) {
     name: station.name || "Unknown station",
     streamUrl,
     countryCode,
+    iconUrl: station.favicon || "",
+    mediaType: "radio",
     lastcheckok: Number(station.lastcheckok),
   };
+}
+
+async function loadTvStations() {
+  const cached = await readTvStationsCache();
+  if (cached && Date.now() - cached.fetchedAt < TV_CACHE_MAX_AGE_MS) {
+    return cached.stations;
+  }
+
+  const endpoints = ["channels.json", "streams.json", "logos.json"].map((file) => `${TV_API_BASE}/${file}`);
+  let responses;
+  try {
+    responses = await Promise.all(
+      endpoints.map(async (endpoint) => {
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (!Array.isArray(data)) {
+          throw new Error(`Invalid response from ${endpoint}`);
+        }
+        return data;
+      }),
+    );
+  } catch (error) {
+    if (cached) {
+      console.warn("Unable to refresh TV channel data; using the expired cache.", error);
+      return cached.stations;
+    }
+    throw error;
+  }
+  const [channels, streams, logos] = responses;
+  const streamByChannel = new Map();
+  const logoByChannel = new Map();
+
+  streams.forEach((stream) => {
+    const channelId = String(stream.channel || "").trim();
+    const streamUrl = String(stream.url || "").trim();
+    if (channelId && /^https?:\/\//i.test(streamUrl) && !streamByChannel.has(channelId)) {
+      streamByChannel.set(channelId, streamUrl);
+    }
+  });
+  logos.forEach((logo) => {
+    const channelId = String(logo.channel || "").trim();
+    const logoUrl = String(logo.url || "").trim();
+    if (channelId && /^https?:\/\//i.test(logoUrl) && !logoByChannel.has(channelId)) {
+      logoByChannel.set(channelId, logoUrl);
+    }
+  });
+
+  const stations = channels
+    .map((channel) => {
+      const channelId = String(channel.id || "").trim();
+      const countryCode = String(channel.country || "").trim().toUpperCase();
+      const streamUrl = streamByChannel.get(channelId);
+      if (!channelId || !streamUrl || !/^[A-Z]{2}$/.test(countryCode)) {
+        return null;
+      }
+      return {
+        stationuuid: channelId,
+        name: channel.name || channelId,
+        streamUrl,
+        countryCode,
+        iconUrl: logoByChannel.get(channelId) || "",
+        mediaType: "tv",
+      };
+    })
+    .filter(Boolean);
+
+  if (!stations.length) {
+    throw new Error("No TV channels with a valid country and stream were returned.");
+  }
+
+  await writeTvStationsCache(stations);
+  return stations;
+}
+
+function openTvCacheDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB is unavailable."));
+      return;
+    }
+    const request = window.indexedDB.open(TV_CACHE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(TV_CACHE_STORE_NAME)) {
+        request.result.createObjectStore(TV_CACHE_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Unable to open the TV cache."));
+  });
+}
+
+async function readTvStationsCache() {
+  let database;
+  try {
+    database = await openTvCacheDatabase();
+    const record = await new Promise((resolve, reject) => {
+      const request = database
+        .transaction(TV_CACHE_STORE_NAME, "readonly")
+        .objectStore(TV_CACHE_STORE_NAME)
+        .get(TV_CACHE_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("Unable to read the TV cache."));
+    });
+    return record && Array.isArray(record.stations) && Number.isFinite(record.fetchedAt) ? record : null;
+  } catch (error) {
+    console.warn("Unable to read the TV station cache; fetching fresh data.", error);
+    return null;
+  } finally {
+    if (database) {
+      database.close();
+    }
+  }
+}
+
+async function writeTvStationsCache(stations) {
+  let database;
+  try {
+    database = await openTvCacheDatabase();
+    await new Promise((resolve, reject) => {
+      const request = database
+        .transaction(TV_CACHE_STORE_NAME, "readwrite")
+        .objectStore(TV_CACHE_STORE_NAME)
+        .put({ fetchedAt: Date.now(), stations }, TV_CACHE_KEY);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error("Unable to write the TV cache."));
+    });
+  } catch (error) {
+    console.warn("Unable to cache TV channel data in IndexedDB.", error);
+  } finally {
+    if (database) {
+      database.close();
+    }
+  }
 }
 
 function uniqueCountryCodes(stations) {
@@ -541,7 +717,6 @@ function startRound() {
   prepareBeginnerChoices(station);
   setBeginnerOptionsEnabled(false);
   renderCurrentPoints();
-  setStreamLoading(true);
   $("#stream-status").text(t("waitingForStream"));
   $("#submit-guess-btn").prop("disabled", true);
   $("#timer-display").addClass("hidden").text("");
@@ -556,9 +731,13 @@ function startRound() {
 }
 
 function startStationPlayback(station) {
-  const player = $("#radio-player")[0];
-  const playerWrapper = $("#radio-player");
+  const isTv = station.mediaType === "tv";
+  const playerWrapper = $(isTv ? "#tv-player" : "#radio-player");
+  const player = playerWrapper[0];
+  $("#radio-player, #tv-player").addClass("hidden");
+  playerWrapper.removeClass("hidden");
   playerWrapper.off(".round");
+  disposeHlsInstance();
 
   playerWrapper.on("playing.round", () => {
     if (gameState.roundLocked || gameState.streamStarted) {
@@ -566,7 +745,6 @@ function startStationPlayback(station) {
     }
     gameState.streamStarted = true;
     clearStreamWaitTimeout();
-    setStreamLoading(false);
     $("#stream-status").text("");
     $("#submit-guess-btn").prop("disabled", false);
     setBeginnerOptionsEnabled(true);
@@ -577,17 +755,11 @@ function startStationPlayback(station) {
   });
 
   playerWrapper.on("error.round", () => {
-    if (gameState.roundLocked || gameState.streamStarted) {
-      return;
-    }
-    $("#stream-status").text(t("streamTimeout"));
-    setStreamLoading(false);
-    submitGuess("skipped");
+    handleStreamFailure();
   });
 
   player.pause();
-  player.src = station.streamUrl;
-  player.load();
+  player.removeAttribute("src");
 
   clearStreamWaitTimeout();
   gameState.streamWaitTimeoutId = window.setTimeout(() => {
@@ -595,13 +767,47 @@ function startStationPlayback(station) {
       return;
     }
     $("#stream-status").text(t("streamTimeout"));
-    setStreamLoading(false);
     submitGuess("skipped");
   }, STREAM_START_TIMEOUT_SECONDS * 1000);
 
+  if (isTv && /\.m3u8(?:$|\?)/i.test(station.streamUrl) && window.Hls && window.Hls.isSupported()) {
+    const hls = new window.Hls();
+    gameState.hlsInstance = hls;
+    hls.on(window.Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(station.streamUrl));
+    hls.on(window.Hls.Events.MANIFEST_PARSED, () => playStationMedia(player));
+    hls.on(window.Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) {
+        handleStreamFailure();
+      }
+    });
+    hls.attachMedia(player);
+    return;
+  }
+
+  player.src = station.streamUrl;
+  player.load();
+  playStationMedia(player);
+}
+
+function playStationMedia(player) {
   player.play().catch(() => {
     $("#stream-status").text(t("autoplayBlocked"));
   });
+}
+
+function handleStreamFailure() {
+  if (gameState.roundLocked || gameState.streamStarted) {
+    return;
+  }
+  $("#stream-status").text(t("streamTimeout"));
+  submitGuess("skipped");
+}
+
+function disposeHlsInstance() {
+  if (gameState.hlsInstance) {
+    gameState.hlsInstance.destroy();
+    gameState.hlsInstance = null;
+  }
 }
 
 function startRoundTimer() {
@@ -639,14 +845,16 @@ function submitGuess(mode) {
   gameState.roundLocked = true;
   clearRoundTimer();
   clearStreamWaitTimeout();
-  setStreamLoading(false);
   hideSuggestions();
   $("#submit-guess-btn").prop("disabled", true);
-  const player = $("#radio-player")[0];
+  const player = $("#radio-player, #tv-player").filter((_, media) => !media.classList.contains("hidden"))[0];
 
-  player.pause();
-  player.removeAttribute("src");
-  player.load();
+  if (player) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+  disposeHlsInstance();
 
   const isCorrect = Boolean(matchedCountry && matchedCountry === station.countryCode);
   const status = resolveRoundStatus(mode, isCorrect);
@@ -814,14 +1022,17 @@ function finishGame() {
   const guessesMade = gameState.results.filter((result) => Boolean(result.guessCountryCode)).length;
   const skippedCount = gameState.results.filter((result) => result.status === "skipped").length;
   const totalPoints = getAccumulatedPoints();
-  const player = $("#radio-player")[0];
-
-  player.pause();
+  const player = $("#radio-player, #tv-player").filter((_, media) => !media.classList.contains("hidden"))[0];
+  if (player) {
+    player.pause();
+  }
+  disposeHlsInstance();
 
   renderSummaryScore();
   renderResultsTable();
   saveGameHistory({
     playedAt: new Date().toISOString(),
+    gameType: gameState.gameType,
     totalRounds,
     level: gameState.selectedLevel,
     timerSeconds: gameState.roundTimerSeconds,
@@ -845,6 +1056,7 @@ function renderSummaryScore() {
   const timerText = getTimerOptionLabel(gameState.roundTimerSeconds || 0);
 
   $("#summary-meta").html(`
+    <span class="summary-badge"><strong>${escapeHtml(t("gameType"))}:</strong> ${escapeHtml(getGameTypeLabel(gameState.gameType))}</span>
     <span class="summary-badge"><strong>${escapeHtml(t("levelLabel"))}:</strong> ${escapeHtml(levelText)}</span>
     <span class="summary-badge"><strong>${escapeHtml(t("timerLabel"))}:</strong> ${escapeHtml(timerText)}</span>
   `);
@@ -878,7 +1090,13 @@ function updateSetupSummary() {
   const timerValue = Number.parseInt($("#round-timer-select").val(), 10) || 0;
   const levelText = getLevelOptionLabel($("#level-select").val());
   const timerText = getTimerOptionLabel(timerValue);
-  $("#setup-compact-summary").text(formatText("setupSummary", { level: levelText, timer: timerText }));
+  $("#setup-compact-summary").text(
+    formatText("setupSummary", { gameType: getGameTypeLabel(gameState.gameType), level: levelText, timer: timerText }),
+  );
+}
+
+function getGameTypeLabel(gameType) {
+  return gameType === "tv" ? t("gameTypeTv") : t("gameTypeRadio");
 }
 
 function getLevelOptionLabel(levelKey) {
@@ -1125,10 +1343,6 @@ function setSetupLoading(isLoading) {
   $("#setup-spinner").toggleClass("hidden", !isLoading);
 }
 
-function setStreamLoading(isLoading) {
-  $("#stream-spinner").toggleClass("hidden", !isLoading);
-}
-
 function showPanel(name) {
   $("#setup-panel, #game-panel, #feedback-panel, #summary-panel").addClass("hidden");
   $("#app-subtitle").toggleClass("hidden", name !== "setup");
@@ -1147,13 +1361,18 @@ function showPanel(name) {
 function resetToSetup() {
   clearRoundTimer();
   clearStreamWaitTimeout();
-  setStreamLoading(false);
   $("#stream-status").text("");
-  const player = $("#radio-player")[0];
-  $("#radio-player").off(".round");
-  player.pause();
-  player.removeAttribute("src");
-  player.load();
+  $("#radio-player, #tv-player").off(".round");
+  $("#radio-player, #tv-player").each((_, player) => {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  });
+  $("#radio-player").removeClass("hidden");
+  $("#tv-player").addClass("hidden");
+  $("#station-icon").addClass("hidden").removeAttr("src");
+  disposeHlsInstance();
+  $("#game-type-select").prop("disabled", false);
   showPanel("setup");
 }
 
@@ -1238,6 +1457,7 @@ function renderHistory() {
           <span>${escapeHtml(
             formatText("historyCompactLine", {
               date: playedAt,
+              gameType: getGameTypeLabel(game.gameType),
               score: t("scoreLabel"),
               correct: String(game.correctCount),
               total: String(game.totalRounds),
@@ -1279,7 +1499,22 @@ function renderCurrentStationTitle() {
   const station = gameState.selectedStations[gameState.currentRoundIndex];
   if (!station) {
     $("#station-title").text("");
+    $("#station-icon").addClass("hidden").removeAttr("src");
     return;
+  }
+
+  const icon = $("#station-icon");
+  icon.off("error.stationIcon");
+  if (station.iconUrl) {
+    icon
+      .attr("src", station.iconUrl)
+      .attr("alt", `logo`)
+      .removeClass("hidden")
+      .on("error.stationIcon", function () {
+        $(this).addClass("hidden");
+      });
+  } else {
+    icon.addClass("hidden").removeAttr("src");
   }
 
   if (gameState.selectedLevel === "advanced" || gameState.selectedLevel === "intermediate") {
@@ -1355,6 +1590,7 @@ function readSettings(defaults) {
     return {
       language: parsed.language === "es" ? "es" : defaults.language,
       level: ["beginner", "intermediate", "advanced"].includes(parsed.level) ? parsed.level : "beginner",
+      gameType: parsed.gameType === "tv" ? "tv" : "radio",
       theme: ["system", "light", "dark"].includes(parsed.theme) ? parsed.theme : defaults.theme,
       roundCount: clamp(Number(parsed.roundCount) || defaults.roundCount, 1, 50),
       roundTimer,
@@ -1372,6 +1608,7 @@ function persistCurrentSettings() {
   const settings = {
     language: gameState.currentLanguage,
     level: ["beginner", "intermediate", "advanced"].includes($("#level-select").val()) ? $("#level-select").val() : "beginner",
+    gameType: $("#game-type-select").val() === "tv" ? "tv" : "radio",
     theme: ["system", "light", "dark"].includes($("#theme-select").val()) ? $("#theme-select").val() : "system",
     roundCount,
     roundTimer,

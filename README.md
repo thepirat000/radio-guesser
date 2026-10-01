@@ -1,11 +1,13 @@
-# Radio Guesser
+# Station Guesser
 
-Simple static game (HTML + CSS + JavaScript with jQuery) to guess the country of random radio stations.
+Simple static game (HTML + CSS + JavaScript with jQuery) to guess the country of random radio and TV stations.
 
 ## Features
 
 - No backend, no Node server, no React.
-- Uses [Radio Browser API](https://api.radio-browser.info/) to fetch stations.
+- Choose Radio or TV as the game type.
+- Uses [Radio Browser API](https://api.radio-browser.info/) for radio stations and the [iptv-org APIs](https://github.com/iptv-org/api) for TV channels.
+- Caches the assembled TV channel list in IndexedDB for 24 hours.
 - Only uses stations with `lastcheckok = 1`.
 - Plays random stations and asks user to guess country.
 - Supports **English** and **Spanish (LatAm)**.
@@ -27,4 +29,4 @@ Simple static game (HTML + CSS + JavaScript with jQuery) to guess the country of
 
 Demo: https://thepirat000.github.io/radio-guesser/
 
-If your browser blocks autoplay, click play in the audio control.
+If your browser blocks autoplay, click play in the media control. TV playback uses hls.js for HLS streams when needed.
