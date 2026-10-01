@@ -411,6 +411,27 @@ input {
   font-weight: 700;
 }
 
+.summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+
+.summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--history-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
 .summary-score {
   font-size: 22px;
   font-weight: 800;

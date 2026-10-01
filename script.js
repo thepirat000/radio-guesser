@@ -106,7 +106,7 @@ const translations = {
     distanceFar: "far",
     distanceVeryFar: "very far",
     distanceExact: "exact country",
-    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {timerLabel}: {timer}",
+    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
   },
   es: {
     appTitle: "Radio Guesser",
@@ -199,7 +199,7 @@ const translations = {
     distanceFar: "lejos",
     distanceVeryFar: "muy lejos",
     distanceExact: "país exacto",
-    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {timerLabel}: {timer}",
+    historyCompactLine: "{date} | {score}: {correct}/{total} | {pointsLabel}: {points} | {levelLabel}: {level} | {timerLabel}: {timer}",
   },
 };
 
@@ -823,6 +823,7 @@ function finishGame() {
   saveGameHistory({
     playedAt: new Date().toISOString(),
     totalRounds,
+    level: gameState.selectedLevel,
     timerSeconds: gameState.roundTimerSeconds,
     correctCount,
     guessesMade,
@@ -839,6 +840,14 @@ function renderSummaryScore() {
   const correctCount = gameState.results.filter((result) => result.status === "right").length;
   const totalPoints = getAccumulatedPoints();
   const maxPossiblePoints = totalRounds * SCORE_RULES.exactMatchPoints;
+
+  const levelText = getLevelOptionLabel(gameState.selectedLevel);
+  const timerText = getTimerOptionLabel(gameState.roundTimerSeconds || 0);
+
+  $("#summary-meta").html(`
+    <span class="summary-badge"><strong>${escapeHtml(t("levelLabel"))}:</strong> ${escapeHtml(levelText)}</span>
+    <span class="summary-badge"><strong>${escapeHtml(t("timerLabel"))}:</strong> ${escapeHtml(timerText)}</span>
+  `);
 
   $("#summary-score").text(
     formatText("scoreLineWithPoints", {
@@ -867,9 +876,19 @@ function getAccumulatedPoints() {
 
 function updateSetupSummary() {
   const timerValue = Number.parseInt($("#round-timer-select").val(), 10) || 0;
-  const levelText = $("#level-select option:selected").text();
+  const levelText = getLevelOptionLabel($("#level-select").val());
   const timerText = getTimerOptionLabel(timerValue);
   $("#setup-compact-summary").text(formatText("setupSummary", { level: levelText, timer: timerText }));
+}
+
+function getLevelOptionLabel(levelKey) {
+  if (levelKey === "advanced") {
+    return t("levelAdvanced");
+  }
+  if (levelKey === "intermediate") {
+    return t("levelIntermediate");
+  }
+  return t("levelBeginner");
 }
 
 function getTimerOptionLabel(secondsValue) {
@@ -1174,6 +1193,7 @@ function renderHistory() {
     const timerLabel = game.timerSeconds
       ? formatText("timerPerRound", { seconds: game.timerSeconds })
       : t("timerNone");
+    const levelLabel = getLevelOptionLabel(game.level || "intermediate");
     const totalPoints = Number.isFinite(Number(game.totalPoints))
       ? Number(game.totalPoints)
       : Array.isArray(game.details)
@@ -1223,6 +1243,8 @@ function renderHistory() {
               total: String(game.totalRounds),
               pointsLabel: t("pointsLabel"),
               points: String(totalPoints),
+              levelLabel: t("levelLabel"),
+              level: levelLabel,
               timerLabel: t("timerLabel"),
               timer: timerLabel,
             }),
