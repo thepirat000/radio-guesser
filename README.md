@@ -25,6 +25,6 @@ Simple static game (HTML + CSS + JavaScript with jQuery) to guess the country of
 
 ## Run
 
-Just open `index.html` in a browser.
+Demo: https://thepirat000.github.io/radio-guesser/
 
 If your browser blocks autoplay, click play in the audio control.
