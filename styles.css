@@ -524,15 +524,18 @@ input {
   font-size: 14px;
 }
 
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+#history-disclosure > summary {
+  cursor: pointer;
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
-.history-header .danger-btn {
-  margin-top: 0;
+#history-disclosure > summary::marker {
+  color: var(--primary);
+}
+
+#history-disclosure > .danger-btn {
+  margin: 10px 0;
 }
 
 #setup-compact-summary {
@@ -617,7 +620,7 @@ input {
 
 @media (max-width: 700px) {
   .app {
-    padding: 14px 12px 24px;
+    padding: 12px 10px 20px;
   }
 
   .app-header {
@@ -639,12 +642,13 @@ input {
   .lang-control {
     width: 100%;
     justify-content: flex-start;
-    gap: 8px;
+    gap: 6px;
   }
 
   .control-row {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
+    gap: 4px;
   }
 
   .control-row select {
@@ -653,6 +657,107 @@ input {
     font-size: 11px;
     padding: 3px 6px;
     height: 28px;
+  }
+
+  .panel {
+    padding: 14px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+  }
+
+  .game-top {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  #round-title {
+    margin: 0;
+    font-size: 19px;
+    line-height: 1.2;
+  }
+
+  .game-metrics {
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .points-display {
+    font-size: 15px;
+  }
+
+  .timer {
+    font-size: 13px;
+  }
+
+  .round-progress-wrap {
+    margin: 8px 0 10px;
+  }
+
+  .audio-area {
+    margin: 10px 0 12px;
+  }
+
+  .station-icon {
+    width: 56px;
+    height: 56px;
+    margin: 8px 0;
+  }
+
+  .beginner-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .beginner-option-btn {
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  #history-title {
+    font-size: 18px;
+  }
+
+  .history-compact {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-header h1 {
+    font-size: 20px;
+  }
+
+  .control-row label {
+    font-size: 10px;
+  }
+
+  .control-row select {
+    font-size: 10px;
+    padding: 3px 4px;
+  }
+
+  .game-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 6px;
+  }
+
+  #round-title {
+    font-size: 17px;
+  }
+
+  .game-metrics {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .points-display {
+    font-size: 13px;
+  }
+
+  .timer {
+    font-size: 11px;
   }
 }
 
